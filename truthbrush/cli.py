@@ -148,8 +148,10 @@ def ads():
 @click.option(
     "--pinned/--all", default=False, help="Only pull pinned posts (defaults to all)"
 )
+@click.option("--limit", default=20, help="Limit the number of statuses returned", type=int)
 def statuses(
     username: str,
+    limit: int,
     replies: bool = False,
     created_after: date = None,
     pinned: bool = False,
@@ -160,10 +162,13 @@ def statuses(
     if created_after and created_after.tzinfo is None:
         created_after = created_after.replace(tzinfo=datetime.timezone.utc)
 
-    for page in api.pull_statuses(
-        username, created_after=created_after, replies=replies, pinned=pinned
-    ):
-        print(json.dumps(page))
+    # Collect all statuses into a list
+    statuses_list = list(api.pull_statuses(username, created_after=created_after, replies=replies, pinned=pinned, limit=limit))
+
+    # Output the entire list as a JSON array
+    print(json.dumps(statuses_list))
+
+
 
 
 @cli.command()

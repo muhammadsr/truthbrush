@@ -353,19 +353,21 @@ class Api:
                     return
 
     def pull_statuses(
-        self,
-        username: str,
-        replies=False,
-        verbose=False,
-        created_after: datetime = None,
-        since_id=None,
-        pinned=False,
-    ) -> List[dict]:
+            self,
+            username: str,
+            replies=False,
+            verbose=False,
+            created_after: datetime = None,
+            since_id=None,
+            pinned=False,
+            limit: int=None,  # New parameter to limit number of statuses
+        ) -> List[dict]:
         """Pull the given user's statuses.
 
         Params:
             created_after : timezone aware datetime object
             since_id : number or string
+            limit : maximum number of statuses to yield (optional)
 
         Returns a list of posts in reverse chronological order,
             or an empty list if not found.
@@ -374,6 +376,7 @@ class Api:
         params = {}
         user_id = self.lookup(username)["id"]
         page_counter = 0
+        count = 0  # Counter for yielded posts
         keep_going = True
         while keep_going:
             try:
@@ -408,36 +411,39 @@ class Api:
 
             posts = sorted(
                 result, key=lambda k: k["id"], reverse=True
-            )  # reverse chronological order (recent first, older last)
-            params["max_id"] = posts[-1][
-                "id"
-            ]  # when pulling the next page, get posts before this (the oldest)
+            )  # Reverse chronological order (recent first, older last)
+            params["max_id"] = posts[-1]["id"]  # When pulling the next page, get posts before this (the oldest)
 
             if verbose:
                 logger.debug(f"PAGE: {page_counter}")
 
-            if pinned:  # assume single page
+            if pinned:  # Assume single page
                 keep_going = False
 
             for post in posts:
                 post["_pulled"] = datetime.now().isoformat()
 
-                # only keep posts created after the specified date
-                # exclude posts created before the specified date
-                # since the page is listed in reverse chronology, we don't need any remaining posts on this page either
+                # Only yield posts created after the specified date,
+                # or newer than since_id.
                 post_at = date_parse.parse(post["created_at"]).replace(
                     tzinfo=timezone.utc
                 )
                 if (created_after and post_at <= created_after) or (
                     since_id and post["id"] <= since_id
                 ):
-                    keep_going = False  # stop the loop, request no more pages
-                    break  # do not yeild this post or remaining (older) posts on this page
+                    keep_going = False  # Stop the loop, request no more pages
+                    break  # Do not yield this post or any remaining (older) posts on this page
 
                 if verbose:
                     logger.debug(f"{post['id']} {post['created_at']}")
 
                 yield post
+                count += 1
+                # If we've yielded the requested number of statuses, stop
+                if limit is not None and count >= limit:
+                    keep_going = False
+                    break
+
 
     def get_auth_id(self, username: str, password: str) -> str:
         """Logs in to Truth account and returns the session token"""
